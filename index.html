@@ -230,7 +230,12 @@ function render(skipProps=false){
   for(const f of data.fixtures){
     const g=node('g',{transform:`translate(${f.x} ${f.y}) rotate(${f.rotate||0})`,'data-id':f.id,'data-kind':'fixture',cursor:'move'});
     const w=f.w||60, h=f.h||40;
-    if(f.type!=='text') node('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:(f.type==='toilet'||f.type==='sink'||f.type==='shower')?8:2,fill:['kitchen','kitchenL','toilet','sink','shower'].includes(f.type)?'transparent':'#f5f7f6',stroke:hasSelection(f.id)?'#4a968e':'#adb9b7','stroke-width':hasSelection(f.id)?2:1.3},g);
+    if(f.type!=='text'){
+      // Invisible hit area: select and drag the fixture from anywhere inside, without a visible bounding box.
+      node('rect',{x:-w/2,y:-h/2,width:w,height:h,fill:'transparent',stroke:'none','pointer-events':'all'},g);
+      if(f.type==='stairs')node('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:2,fill:'none',stroke:'#adb9b7','stroke-width':1.3,'pointer-events':'none'},g);
+      if(hasSelection(f.id))node('rect',{x:-w/2-5,y:-h/2-5,width:w+10,height:h+10,rx:3,fill:'none',stroke:'#4a968e','stroke-width':1,'stroke-dasharray':'4 4','pointer-events':'none'},g);
+    }
     if(f.type==='stairs'){
       for(let a=-h/2+12;a<h/2;a+=14) node('path',{d:`M ${-w/2+4} ${a} H ${w/2-4}`,stroke:'#b1bab9','stroke-width':1},g);
       node('path',{d:`M 0 ${h/2-8} V ${-h/2+8} l -5 8 m 5 -8 l 5 8`,stroke:'#687c7b','stroke-width':1.6,fill:'none'},g);
@@ -241,19 +246,24 @@ function render(skipProps=false){
       node('circle',{cx:c2,cy:0,r:7,fill:'none',stroke:'#a4b5b3'},g);
     } else if(f.type==='kitchenL'){
       const kG=node('g',{transform:f.mirror?'scale(-1 1)':'scale(1 1)'},g);
-      const x0=-w/2+8, y0=-h/2+8, d=Math.max(28,Math.min(w,h)*0.38), x2=w/2-8, y2=h/2-8;
+      const x0=-w/2+5, y0=-h/2+5, d=Math.max(18,Math.min(f.counterDepth||45,w-15,h-15)), x2=w/2-5, y2=h/2-5;
       node('path',{d:`M ${x0} ${y0} H ${x2} V ${y0+d} H ${x0+d} V ${y2} H ${x0} Z`,fill:'none',stroke:'#92a8a6','stroke-width':2,'stroke-linejoin':'round'},kG);
-      node('rect',{x:x0+10,y:y0+8,width:Math.max(34,d-20),height:Math.max(18,d-22),rx:4,fill:'none',stroke:'#a4b5b3'},kG);
-      node('circle',{cx:x2-38,cy:y0+18,r:7,fill:'none',stroke:'#a4b5b3'},kG);
-      node('circle',{cx:x2-20,cy:y0+18,r:7,fill:'none',stroke:'#a4b5b3'},kG);
+      node('rect',{x:x0+Math.min(10,d*.2),y:y0+Math.min(7,d*.2),width:Math.max(12,d-17),height:Math.max(10,d-16),rx:4,fill:'none',stroke:'#a4b5b3'},kG);
+      node('circle',{cx:x2-35,cy:y0+d/2,r:Math.min(7,d*.17),fill:'none',stroke:'#a4b5b3'},kG);
+      node('circle',{cx:x2-17,cy:y0+d/2,r:Math.min(7,d*.17),fill:'none',stroke:'#a4b5b3'},kG);
     } else if(f.type==='toilet'){
-      node('rect',{x:-w*0.2,y:-h*0.37,width:w*0.4,height:h*0.24,rx:6,fill:'none',stroke:'#95a9a6'},g);
-      node('path',{d:`M ${-w*0.28} ${-h*0.05} Q 0 ${h*0.35} ${w*0.28} ${-h*0.05} V ${-h*0.18} Q 0 ${h*0.18} ${-w*0.28} ${-h*0.18} Z`,fill:'none',stroke:'#95a9a6','stroke-width':1.5},g);
-      node('ellipse',{cx:0,cy:h*0.02,rx:w*0.14,ry:h*0.19,fill:'none',stroke:'#b2c0be'},g);
+      // Top-down contemporary sanitary icon: cistern and oval seat, no opaque backing.
+      const ww=w*.32, cisternY=-h*.37;
+      node('rect',{x:-ww,y:cisternY,width:ww*2,height:h*.20,rx:4,fill:'none',stroke:'#809c9c','stroke-width':1.5},g);
+      node('path',{d:`M ${-ww*.96} ${-h*.15} C ${-w*.35} ${h*.02},${-w*.30} ${h*.38},0 ${h*.39} C ${w*.30} ${h*.38},${w*.35} ${h*.02},${ww*.96} ${-h*.15} Z`,fill:'none',stroke:'#809c9c','stroke-width':1.6},g);
+      node('ellipse',{cx:0,cy:h*.09,rx:w*.19,ry:h*.21,fill:'none',stroke:'#aec0c0','stroke-width':1.4},g);
+      node('path',{d:`M ${-ww*.65} ${-h*.17} H ${ww*.65}`,fill:'none',stroke:'#aec0c0','stroke-width':1},g);
     } else if(f.type==='sink'){
-      node('rect',{x:-w*0.34,y:-h*0.28,width:w*0.68,height:h*0.56,rx:7,fill:'none',stroke:'#95a9a6'},g);
-      node('ellipse',{cx:0,cy:0,rx:w*0.18,ry:h*0.16,fill:'none',stroke:'#b0bebc'},g);
-      node('path',{d:`M 0 ${-h*0.45} v ${h*0.14} m 0 ${-h*0.14} h ${w*0.1}`,stroke:'#95a9a6','stroke-width':1.6,fill:'none'},g);
+      // Top-down wall-mounted washbasin: softly rounded basin and faucet.
+      node('path',{d:`M ${-w*.40} ${-h*.25} Q ${-w*.40} ${-h*.42} ${-w*.24} ${-h*.42} H ${w*.24} Q ${w*.40} ${-h*.42} ${w*.40} ${-h*.25} V ${h*.13} Q ${w*.40} ${h*.40} ${w*.18} ${h*.40} H ${-w*.18} Q ${-w*.40} ${h*.40} ${-w*.40} ${h*.13} Z`,fill:'none',stroke:'#809c9c','stroke-width':1.6},g);
+      node('ellipse',{cx:0,cy:h*.02,rx:w*.23,ry:h*.19,fill:'none',stroke:'#aec0c0','stroke-width':1.4},g);
+      node('circle',{cx:0,cy:h*.04,r:Math.max(1.5,Math.min(w,h)*.045),fill:'none',stroke:'#99adac'},g);
+      node('path',{d:`M 0 ${-h*.46} V ${-h*.25} M ${-w*.10} ${-h*.44} H ${w*.10}`,fill:'none',stroke:'#809c9c','stroke-width':1.5,'stroke-linecap':'round'},g);
     } else if(f.type==='shower'){
       node('rect',{x:-w/2+7,y:-h/2+7,width:w-14,height:h-14,fill:'none',stroke:'#9fb2b0','stroke-width':1.5,'stroke-dasharray':'4 3'},g);
       node('path',{d:`M ${-w*0.18} ${-h*0.22} Q 0 ${-h*0.38} ${w*0.18} ${-h*0.22}`,stroke:'#95a9a6','stroke-width':1.5,fill:'none'},g);
@@ -314,7 +324,7 @@ function renderProps(){
     h+=`<div class="fieldrow">${field('가로 (cm)','w',o.w)}${field('세로 (cm)','h',o.h)}</div>`;
     h+=`<div class="fieldrow">${field('X 위치','x',o.x)}${field('Y 위치','y',o.y)}</div>`;
     h+=selectField('회전','rotate',o.rotate||0,[[0,'0°'],[90,'90°'],[180,'180°'],[270,'270°']]);
-    if(o.type==='kitchenL')h+=selectField('좌우 대칭','mirror',String(!!o.mirror),[['false','기본'],['true','좌우 뒤집기']]);
+    if(o.type==='kitchenL'){h+=field('싱크대 상판 깊이 (cm)','counterDepth',o.counterDepth||45);h+=selectField('좌우 대칭','mirror',String(!!o.mirror),[['false','기본'],['true','좌우 뒤집기']]);}
     h+=toggleField('설비 이름 표시','showName',visible(o,'showName'));
   }
   h+=`<div class="actionrow"><button class="btn" id="duplicate">복제</button><button class="btn" id="delete">삭제</button><button class="btn" id="ungroupOne" style="${o.groupId?'':'display:none'}">그룹 해제</button></div>`;
@@ -344,6 +354,7 @@ function applyPropChange(el,snapshot=true){
   else if(['name','side','fill','hinge'].includes(k)) a[k]=v;
   else a[k]=val(v);
   if(['w','h','size'].includes(k)) a[k]=Math.max(20,a[k]);
+  if(k==='counterDepth')a[k]=Math.max(18,a[k]);
   render(!snapshot);
 }
 
@@ -424,7 +435,7 @@ svg.addEventListener('pointermove',ev=>{
   for(const q of drag.starts){const item=allObjects().find(a=>a.id===q.id);if(item){item.x=q.x+dx;item.y=q.y+dy;}}
   render(true);
 });
-svg.addEventListener('pointerup',()=>{drag=null;render();}); svg.addEventListener('pointercancel',()=>{drag=null;render();});
+svg.addEventListener('pointerup',()=>{if(drag){drag=null;render();}}); svg.addEventListener('pointercancel',()=>{if(drag){drag=null;render();}});
 
 document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable||e.altKey||e.ctrlKey||e.metaKey)return;const step=e.shiftKey?10:1;const d={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];if(!d||!selectedIds.size)return;e.preventDefault();if(!allObjects().some(o=>selectedIds.has(o.id)&&typeof o.x==='number'))return;snap();moveSelected(...d);render();});
 document.getElementById('undo').onclick=()=>{ if(!history.length) return; data=history.pop(); clearSelection(); render(); };
