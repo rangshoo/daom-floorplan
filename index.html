@@ -68,7 +68,7 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
       자동 저장이 켜져 있습니다.<br>방향키 1cm · Shift+방향키 10cm 미세 이동<br>Shift+클릭으로 여러 개 선택, 오른쪽에서 그룹화<br>
       직사각형 방은 가로·세로 숫자로 수정할 수 있습니다.<br>
       다각형 공간은 오른쪽 속성의 <b>꼭짓점 좌표</b>를 수정하세요.<br><br>
-      문·창문은 <b>직사각형 방을 먼저 선택</b>한 뒤 추가할 수 있습니다.<br>
+      문·창문은 <b>방 또는 다각형 공간을 선택</b>한 뒤 추가할 수 있습니다.<br>
       ㄱ자 주방, 변기, 세면대, 샤워는 개별 이동과 회전이 가능합니다.
     </div>
   </aside>
@@ -176,6 +176,8 @@ function isRectRoom(r){ return r && r.type==='room'; }
 function roomArea(r){ if(r.type==='room') return (r.w*r.h)/10000; if(r.type==='polyroom') return Math.abs(polySignedArea(r.points))/10000; return 0; }
 function polySignedArea(points){ let a=0; for(let i=0;i<points.length;i++){ const p=points[i], q=points[(i+1)%points.length]; a += p.x*q.y - q.x*p.y; } return a/2; }
 function polyBounds(obj){ const pts=obj.points||[]; let xs=pts.map(p=>p.x+obj.x), ys=pts.map(p=>p.y+obj.y); return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs)-Math.min(...xs), h:Math.max(...ys)-Math.min(...ys)}; }
+function polyEdges(obj){const pts=obj.points||[];return pts.map((p,i)=>{const q=pts[(i+1)%pts.length];const dx=q.x-p.x,dy=q.y-p.y;return {x:obj.x+p.x,y:obj.y+p.y,dx,dy,len:Math.hypot(dx,dy),angle:Math.atan2(dy,dx)*180/Math.PI};});}
+function polyEdgeOptions(obj){return polyEdges(obj).map((e,i)=>[String(i),`벽 ${i+1} (${Math.round(e.len)}cm)`]);}
 function polyPath(obj){ return (obj.points||[]).map((p,i)=>`${i?'L':'M'} ${obj.x+p.x} ${obj.y+p.y}`).join(' ')+' Z'; }
 function polyTextCenter(obj){ const b=polyBounds(obj); return {x:b.x+b.w/2, y:b.y+b.h/2}; }
 function defaultPolyPoints(){ return [{x:0,y:0},{x:320,y:0},{x:360,y:60},{x:360,y:150},{x:140,y:150},{x:0,y:110}]; }
@@ -202,26 +204,38 @@ function render(skipProps=false){
   }
 
   for(const i of data.items){
-    const r=getRoom(i.room); if(!isRectRoom(r)) continue;
-    const horizontal = i.side==='top'||i.side==='bottom';
-    const sideLen = horizontal ? r.w : r.h;
-    const half = i.size/2;
-    const p=Math.max(half+8,Math.min(sideLen-half-8,(i.pos||.5)*sideLen));
-    const x=horizontal ? r.x+p : (i.side==='left' ? r.x : r.x+r.w);
-    const y=horizontal ? (i.side==='top' ? r.y : r.y+r.h) : r.y+p;
-    const angle=i.side==='top'?0:i.side==='bottom'?180:i.side==='left'?270:90;
+    const r=getRoom(i.room);if(!r)continue;
+    let x,y,angle,sideLen;
+    if(r.type==='polyroom'){
+      const edges=polyEdges(r),edge=edges[Math.max(0,Math.min(edges.length-1,Number(i.edge)||0))];
+      if(!edge||edge.len<2)continue;
+      sideLen=edge.len;
+      const p=Math.max(0,Math.min(sideLen,(i.pos??.5)*sideLen));
+      x=edge.x+edge.dx/edge.len*p;
+      y=edge.y+edge.dy/edge.len*p;
+      angle=edge.angle;
+    }else{
+      const horizontal=i.side==='top'||i.side==='bottom';
+      sideLen=horizontal?r.w:r.h;
+      const p=Math.max(0,Math.min(sideLen,(i.pos??.5)*sideLen));
+      x=horizontal?r.x+p:(i.side==='left'?r.x:r.x+r.w);
+      y=horizontal?(i.side==='top'?r.y:r.y+r.h):r.y+p;
+      angle=i.side==='top'?0:i.side==='bottom'?180:i.side==='left'?270:90;
+    }
+    const half=Math.min(i.size/2,Math.max(1,sideLen/2-2));
     const g=node('g',{transform:`translate(${x} ${y}) rotate(${angle})`,'data-id':i.id,'data-kind':'item',cursor:'pointer'});
-    node('path',{d:`M ${-half} 0 H ${half}`,stroke:r.fill,'stroke-width':10,fill:'none'},g);
+    node('path',{d:`M ${-half} 0 H ${half}`,stroke:r.fill,'stroke-width':WALL+2,fill:'none','pointer-events':'none'},g);
+    node('path',{d:`M ${-half} 0 H ${half}`,stroke:'transparent','stroke-width':18,fill:'none','pointer-events':'stroke'},g);
     if(i.type==='window'){
       node('path',{d:`M ${-half} -2.5 H ${half} M ${-half} 2.5 H ${half}`,stroke:'#88adb0','stroke-width':2,fill:'none'},g);
       node('path',{d:`M ${-half} -5 V 5 M ${half} -5 V 5`,stroke:'#536668','stroke-width':1.4},g);
     } else {
       const dir=i.flip?-1:1;
       const hinge=(i.hinge==='right'?1:-1);
-      const hx=hinge*half, ex=-hinge*half;
+      const hx=hinge*half, ex=-hinge*half, doorWidth=half*2;
       const sweep=((dir===1)===(hinge===-1))?1:0;
-      node('path',{d:`M ${hx} 0 V ${-dir*i.size}`,stroke:'#435356','stroke-width':1.8,fill:'none'},g);
-      node('path',{d:`M ${hx} ${-dir*i.size} A ${i.size} ${i.size} 0 0 ${sweep} ${ex} 0`,stroke:'#a1aba9','stroke-width':1.3,fill:'none','stroke-dasharray':'3 2'},g);
+      node('path',{d:`M ${hx} 0 V ${-dir*doorWidth}`,stroke:'#435356','stroke-width':1.8,fill:'none'},g);
+      node('path',{d:`M ${hx} ${-dir*doorWidth} A ${doorWidth} ${doorWidth} 0 0 ${sweep} ${ex} 0`,stroke:'#a1aba9','stroke-width':1.3,fill:'none','stroke-dasharray':'3 2'},g);
       node('circle',{cx:hx,cy:0,r:2.4,fill:'#435356'},g);
     }
     if(hasSelection(i.id)) node('rect',{x:-half-6,y:-9,width:i.size+12,height:18,fill:'none',stroke:'#4a968e','stroke-width':1,'stroke-dasharray':'4 3','pointer-events':'none'},g);
@@ -311,8 +325,11 @@ function renderProps(){
     h+=selectField('바닥 배경색','fill',o.fill,[['#ffffff','순백색'],['#f8f9f7','화이트 그레이'],['#f0f5f2','소프트 세이지'],['#f8f4ed','웜 아이보리']]);
     h+=textareaField('꼭짓점 좌표 (x, y 한 줄씩)','pointsText', stringifyPoints(o));
     h+=`<div class="tiny">예시: 0,0 ↵ 320,0 ↵ 340,120 ...<br>좌표는 기준점(X,Y)으로부터의 상대 위치입니다.</div>`;
+    h+=`<div class="actionrow"><button class="btn" id="adddoor">+ 문</button><button class="btn" id="addwindow">+ 창문</button></div>`;
   } else if(o.type==='door' || o.type==='window'){
-    h+=selectField('배치할 벽','side',o.side,[['top','위쪽'],['right','오른쪽'],['bottom','아래쪽'],['left','왼쪽']]);
+    const parentRoom=getRoom(o.room);
+    if(parentRoom?.type==='polyroom')h+=selectField('배치할 벽','edge',String(o.edge??0),polyEdgeOptions(parentRoom));
+    else h+=selectField('배치할 벽','side',o.side,[['top','위쪽'],['right','오른쪽'],['bottom','아래쪽'],['left','왼쪽']]);
     h+=field('폭 (cm)','size',o.size);
     h+=`<div class="field"><label>벽에서의 위치</label><input type="range" min="5" max="95" data-key="pos" value="${Math.round((o.pos||.5)*100)}"><span class="tiny">${Math.round((o.pos||.5)*100)}%</span></div>`;
     if(o.type==='door'){
@@ -377,9 +394,9 @@ function duplicateSelected(){
 
 function addItem(type){
   const r=getSel();
-  if(!r || r.type!=='room'){ toast('문·창문은 직사각형 방을 먼저 선택해 주세요'); return; }
+  if(!r || !['room','polyroom'].includes(r.type)){ toast('문·창문을 추가할 공간을 먼저 선택해 주세요'); return; }
   snap();
-  const it={id:++uid,type,room:r.id,side:'bottom',pos:.5,size:type==='door'?80:120,flip:false,hinge:'left'};
+  const it={id:++uid,type,room:r.id,side:'bottom',edge:0,pos:.5,size:type==='door'?80:120,flip:false,hinge:'left'};
   data.items.push(it); selectOne(it.id); setTool('select'); render();
 }
 
@@ -405,7 +422,7 @@ function addShape(type){
 }
 
 function setTool(t){ tool=t; document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el.dataset.tool===t)); }
-document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(getSel()?.type==='room') addItem(t); else toast('도면에서 직사각형 방을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','text'].includes(t)){ addShape(t); } else setTool(t); });
+document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(['room','polyroom'].includes(getSel()?.type)) addItem(t); else toast('도면에서 방 또는 다각형 공간을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','text'].includes(t)){ addShape(t); } else setTool(t); });
 
 function svgPoint(ev){ const pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
 svg.addEventListener('pointerdown',ev=>{
