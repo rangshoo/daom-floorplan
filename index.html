@@ -38,8 +38,8 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
   <div class="logo">DAOM<span>FLOOR PLAN STUDIO</span></div>
   <div class="topright">
     <button class="btn" id="undo">실행취소</button>
-    <button class="btn" id="new2">2층 샘플</button>
-    <button class="btn" id="new3">3층 샘플</button>
+    <button class="btn" id="new2">2층 샘플 추가</button>
+    <button class="btn" id="new3">3층 샘플 추가</button>
     <button class="btn" id="save">프로젝트 저장</button>
     <button class="btn" id="load">불러오기</button>
     <button class="btn primary" id="png">↓ PNG 내보내기</button>
@@ -59,6 +59,7 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
     <button class="tool" data-tool="kitchen"><span class="ico">▤</span><span>일자 주방</span></button>
     <button class="tool" data-tool="kitchenL"><span class="ico">ㄱ</span><span>ㄱ자 주방</span></button>
     <button class="tool" data-tool="stairs"><span class="ico">▥</span><span>계단</span></button>
+    <button class="tool" data-tool="washer"><span class="ico">◉</span><span>세탁기</span></button>
     <button class="tool" data-tool="toilet"><span class="ico">◔</span><span>변기</span></button>
     <button class="tool" data-tool="sink"><span class="ico">◻</span><span>세면대</span></button>
     <button class="tool" data-tool="shower"><span class="ico">╱</span><span>샤워부스</span></button>
@@ -74,6 +75,11 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
   </aside>
   <main class="stagewrap">
     <div class="canvascontrols">
+      <label>도면 <select id="drawingSelect" aria-label="도면 선택" style="max-width:180px"></select></label>
+      <button class="btn" id="addDrawing" title="빈 도면 추가">+ 새 도면</button>
+      <button class="btn" id="renameDrawing" title="현재 도면 이름 변경">이름 변경</button>
+      <button class="btn" id="duplicateDrawing" title="현재 도면 복제">복제</button>
+      <button class="btn" id="deleteDrawing" title="현재 도면 삭제">삭제</button>
       <label>도화지
         <select id="paperSize">
           <option value="900,680">기본 900×680</option>
@@ -110,7 +116,61 @@ const artboard=document.getElementById('artboard');
 let uid=100, tool='select', selected=null, selectedIds=new Set(), drag=null, history=[];
 let paper={w:1400,h:1000}, zoom=.8;
 let data={rooms:[],items:[],fixtures:[]};
-const AUTO_KEY='daom-plan-autosave-v3';
+const AUTO_KEY='daom-plan-autosave-v4';
+const LEGACY_KEY='daom-plan-autosave-v3';
+let drawings=[],activeDrawingId=null,drawingSeq=1;
+function emptyData(){return {rooms:[],items:[],fixtures:[]};}
+function newDrawing(name,content=emptyData(),size={w:1400,h:1000}){
+  return {id:'drawing-'+(drawingSeq++),name,data:migrate(JSON.parse(JSON.stringify(content))),paper:{...size}};
+}
+function drawingCurrent(){return drawings.find(d=>d.id===activeDrawingId);}
+function stashDrawing(){
+  const d=drawingCurrent();if(!d)return;
+  d.data=JSON.parse(JSON.stringify(data));d.paper={...paper};
+}
+function saveWorkspaceNow(){
+  try{stashDrawing();localStorage.setItem(AUTO_KEY,JSON.stringify({version:4,drawings,activeDrawingId,drawingSeq}));}
+  catch(err){toast('자동 저장 공간이 부족할 수 있어요. 프로젝트 파일을 저장해 주세요');}
+}
+function syncDrawingSelect(){
+  const sel=document.getElementById('drawingSelect');if(!sel)return;
+  sel.replaceChildren();
+  drawings.forEach(d=>{const op=document.createElement('option');op.value=d.id;op.textContent=d.name;sel.append(op);});
+  sel.value=activeDrawingId;
+}
+function activateDrawing(id){
+  const d=drawings.find(d=>d.id===id);if(!d)return;
+  stashDrawing();activeDrawingId=id;data=migrate(JSON.parse(JSON.stringify(d.data)));
+  paper={...d.paper};history=[];clearSelection();
+  uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(o=>o.id));
+  syncDrawingSelect();syncPaper();render();saveWorkspaceNow();
+}
+function appendDrawing(name,content=emptyData(),size={w:1400,h:1000}){
+  stashDrawing();const d=newDrawing(name,content,size);drawings.push(d);
+  activeDrawingId=d.id;data=JSON.parse(JSON.stringify(d.data));paper={...d.paper};history=[];
+  clearSelection();uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(o=>o.id));
+  syncDrawingSelect();syncPaper();render();saveWorkspaceNow();fitPaper();toast(name+' 도면을 추가했습니다');
+}
+function initDrawingControls(){
+  document.getElementById('drawingSelect').addEventListener('change',e=>activateDrawing(e.target.value));
+  document.getElementById('addDrawing').onclick=()=>{
+    const name=prompt('새 도면 이름을 입력해 주세요. (예: 망원점 1층)', '새 도면 '+(drawings.length+1));
+    if(name===null)return;appendDrawing(name.trim()||'새 도면 '+(drawings.length+1));
+  };
+  document.getElementById('renameDrawing').onclick=()=>{
+    const d=drawingCurrent();if(!d)return;const name=prompt('도면 이름 변경',d.name);
+    if(name===null||!name.trim())return;d.name=name.trim();syncDrawingSelect();saveWorkspaceNow();toast('도면 이름을 변경했습니다');
+  };
+  document.getElementById('duplicateDrawing').onclick=()=>{
+    const d=drawingCurrent();if(!d)return;stashDrawing();appendDrawing(d.name+' 복사본',d.data,d.paper);
+  };
+  document.getElementById('deleteDrawing').onclick=()=>{
+    if(drawings.length<=1){toast('마지막 도면은 삭제할 수 없습니다');return;}
+    const d=drawingCurrent();if(!confirm('"'+d.name+'" 도면을 삭제할까요? 되돌릴 수 없습니다.'))return;
+    drawings=drawings.filter(x=>x.id!==d.id);activeDrawingId=null;activateDrawing(drawings[0].id);
+    toast('도면을 삭제했습니다');
+  };
+}
 const WALL=10; // walls extend outwards from inner-dimension outline
 function visible(o,key){return o[key]!==false;}
 function migrate(d){d.rooms=d.rooms||[];d.items=d.items||[];d.fixtures=d.fixtures||[];d.fixtures=d.fixtures.filter(f=>f.name!=='현관 · 복도 (위치 조정)');d.rooms.forEach(r=>{if(r.type==='room'&&!r.fill)r.fill='#f8f9f7';});d.items.forEach(i=>{if(i.type==='door'&&!i.hinge)i.hinge='left'});return d;}
@@ -250,7 +310,14 @@ function render(skipProps=false){
       if(f.type==='stairs')node('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:2,fill:'none',stroke:'#adb9b7','stroke-width':1.3,'pointer-events':'none'},g);
       if(hasSelection(f.id))node('rect',{x:-w/2-5,y:-h/2-5,width:w+10,height:h+10,rx:3,fill:'none',stroke:'#4a968e','stroke-width':1,'stroke-dasharray':'4 4','pointer-events':'none'},g);
     }
-    if(f.type==='stairs'){
+    if(f.type==='washer'){
+      const d=Math.min(w,h)*.70;
+      node('rect',{x:-w*.42,y:-h*.42,width:w*.84,height:h*.84,rx:5,fill:'none',stroke:'#8ea5a4','stroke-width':1.7},g);
+      node('circle',{cx:0,cy:h*.05,r:d*.43,fill:'none',stroke:'#8ea5a4','stroke-width':1.8},g);
+      node('circle',{cx:0,cy:h*.05,r:d*.34,fill:'none',stroke:'#b2c3c1','stroke-width':1.3},g);
+      node('path',{d:`M ${-w*.32} ${-h*.28} H ${w*.32}`,stroke:'#a6b7b4','stroke-width':1.1},g);
+      node('circle',{cx:w*.27,cy:-h*.34,r:2.5,fill:'none',stroke:'#8ea5a4','stroke-width':1.1},g);
+    } else if(f.type==='stairs'){
       for(let a=-h/2+12;a<h/2;a+=14) node('path',{d:`M ${-w/2+4} ${a} H ${w/2-4}`,stroke:'#b1bab9','stroke-width':1},g);
       node('path',{d:`M 0 ${h/2-8} V ${-h/2+8} l -5 8 m 5 -8 l 5 8`,stroke:'#687c7b','stroke-width':1.6,fill:'none'},g);
     } else if(f.type==='kitchen'){
@@ -303,7 +370,7 @@ function renderProps(){
     props.innerHTML=`<div class="selecthint">도면에서 요소를 선택하거나<br>왼쪽에서 새 요소를 추가해 주세요.</div><div class="divider"></div><div class="mini">현재 공간 ${data.rooms.length}개 · 문/창문 ${data.items.length}개 · 설비 ${data.fixtures.length}개</div>`;
     return;
   }
-  const titleMap={door:'문',window:'창문',stairs:'계단',kitchen:'일자 주방',kitchenL:'ㄱ자 주방',toilet:'변기',sink:'세면대',shower:'샤워부스',text:'텍스트',polyroom:'다각형 공간'};
+  const titleMap={door:'문',window:'창문',stairs:'계단',kitchen:'일자 주방',kitchenL:'ㄱ자 주방',toilet:'변기',sink:'세면대',shower:'샤워부스',washer:'세탁기',text:'텍스트',polyroom:'다각형 공간'};
   let h=`<div class="prop-title">${o.type==='room'?'방 설정':(titleMap[o.type]||'요소')+' 편집'}</div><div class="tiny">수정 후 다른 곳을 클릭하면 자동 반영됩니다.<br>방향키: 1cm씩 · Shift+방향키: 10cm씩</div>`;
   if(o.type==='room'){
     h+=field('공간 이름','name',o.name,'text');
@@ -412,7 +479,7 @@ function addShape(type){
   } else {
     const defs={
       kitchen:{name:'주방',w:145,h:55}, kitchenL:{name:'ㄱ자 주방',w:180,h:90}, stairs:{name:'계단',w:100,h:140},
-      toilet:{name:'변기',w:50,h:62}, sink:{name:'세면대',w:54,h:34}, shower:{name:'샤워',w:46,h:46}, text:{name:'텍스트',w:90,h:35}
+      toilet:{name:'변기',w:50,h:62}, sink:{name:'세면대',w:54,h:34}, shower:{name:'샤워',w:46,h:46}, washer:{name:'세탁기',w:65,h:65}, text:{name:'텍스트',w:90,h:35}
     };
     const d=defs[type];
     const f={id:++uid,type,name:d.name,x:420,y:300,w:d.w,h:d.h,rotate:0};
@@ -422,7 +489,7 @@ function addShape(type){
 }
 
 function setTool(t){ tool=t; document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el.dataset.tool===t)); }
-document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(['room','polyroom'].includes(getSel()?.type)) addItem(t); else toast('도면에서 방 또는 다각형 공간을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','text'].includes(t)){ addShape(t); } else setTool(t); });
+document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(['room','polyroom'].includes(getSel()?.type)) addItem(t); else toast('도면에서 방 또는 다각형 공간을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','washer','text'].includes(t)){ addShape(t); } else setTool(t); });
 
 function svgPoint(ev){ const pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
 svg.addEventListener('pointerdown',ev=>{
@@ -456,23 +523,29 @@ svg.addEventListener('pointerup',()=>{if(drag){drag=null;render();}}); svg.addEv
 
 document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable||e.altKey||e.ctrlKey||e.metaKey)return;const step=e.shiftKey?10:1;const d={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];if(!d||!selectedIds.size)return;e.preventDefault();if(!allObjects().some(o=>selectedIds.has(o.id)&&typeof o.x==='number'))return;snap();moveSelected(...d);render();});
 document.getElementById('undo').onclick=()=>{ if(!history.length) return; data=history.pop(); clearSelection(); render(); };
-document.getElementById('save').onclick=()=>download(new Blob([JSON.stringify({version:3,data,paper},null,2)],{type:'application/json'}),'다옴하우스_평면도_프로젝트.json');
+document.getElementById('save').onclick=()=>{
+  stashDrawing();
+  download(new Blob([JSON.stringify({version:4,drawings,activeDrawingId,drawingSeq},null,2)],{type:'application/json'}),'다옴하우스_전체도면_프로젝트.json');
+};
 document.getElementById('load').onclick=()=>document.getElementById('file').click();
 document.getElementById('file').onchange=async e=>{
-  const f=e.target.files[0]; if(!f) return;
+  const file=e.target.files[0];if(!file)return;
   try{
-    const parsed=JSON.parse(await f.text());
-    if(!parsed.data?.rooms || !parsed.data?.items || !parsed.data?.fixtures) throw Error('format');
-    snap(); data=migrate(parsed.data);
-    // migration defaults
-    data.rooms.forEach(r=>{ if(r.type==='polyroom' && !r.points) r.points=defaultPolyPoints(); if(r.type==='room'&&!r.fill) r.fill='#f8f9f7'; });
-    data.items.forEach(it=>{ if(it.type==='door' && !it.hinge) it.hinge='left'; if(typeof it.flip!=='boolean') it.flip=false; });
-    data.fixtures.forEach(fx=>{ if(fx.type==='bath') fx.type='toilet'; });
-    if(parsed.paper) paper=parsed.paper;
-    uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(x=>x.id));
-    clearSelection(); syncPaper(); render(); toast('프로젝트를 불러왔습니다');
-  } catch(err){ toast('지원하지 않는 프로젝트 파일입니다'); }
-  e.target.value='';
+    const parsed=JSON.parse(await file.text());
+    if(!confirm('저장된 프로젝트를 불러오면 현재 도면 목록 전체가 교체됩니다. 진행할까요?'))return;
+    if(Array.isArray(parsed.drawings)&&parsed.drawings.length){
+      drawings=parsed.drawings.map(d=>({id:String(d.id),name:String(d.name||'도면'),data:migrate(d.data||emptyData()),paper:d.paper||{w:1400,h:1000}}));
+      activeDrawingId=null;
+      drawingSeq=Math.max(Number(parsed.drawingSeq)||1,drawings.length+1);
+      activateDrawing(drawings.some(d=>d.id===parsed.activeDrawingId)?parsed.activeDrawingId:drawings[0].id);
+    }else if(parsed.data?.rooms&&parsed.data?.items&&parsed.data?.fixtures){
+      drawings=[];activeDrawingId=null;drawingSeq=1;
+      const d=newDrawing('가져온 도면',parsed.data,parsed.paper||{w:1400,h:1000});
+      drawings.push(d);activateDrawing(d.id);
+    }else throw Error('지원하지 않는 파일');
+    saveWorkspaceNow();toast('프로젝트를 불러왔습니다');
+  }catch(err){toast('프로젝트 파일을 읽을 수 없습니다');}
+  finally{e.target.value='';}
 };
 function download(blob,name){ const a=document.createElement('a'), url=URL.createObjectURL(blob); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),500); }
 document.getElementById('png').onclick=()=>{
@@ -482,20 +555,36 @@ document.getElementById('png').onclick=()=>{
   im.onerror=()=>{ toast('이미지를 만들지 못했습니다'); if(saved!=null)selectOne(saved);render(); };
   im.src=url;
 };
-let autoSavePending; function scheduleAutoSave(){ clearTimeout(autoSavePending); autoSavePending=setTimeout(()=>{ try{ localStorage.setItem(AUTO_KEY, JSON.stringify({data,paper})); }catch(e){} },400); }
+let autoSavePending; function scheduleAutoSave(){clearTimeout(autoSavePending);autoSavePending=setTimeout(saveWorkspaceNow,400);}
 function syncPaper(){ const select=document.getElementById('paperSize'), key=`${paper.w},${paper.h}`; select.value=[...select.options].some(x=>x.value===key)?key:'custom'; document.getElementById('customSize').style.display=(select.value==='custom')?'inline-flex':'none'; document.getElementById('paperW').value=paper.w; document.getElementById('paperH').value=paper.h; setZoom(zoom); }
 function setZoom(z){ zoom=Math.max(.2,Math.min(2,Math.round(z*10)/10)); artboard.style.width=(paper.w*zoom)+'px'; artboard.style.height=(paper.h*zoom)+'px'; document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%'; }
 function fitPaper(){ const st=document.querySelector('.stagewrap'); setZoom(Math.min(.9,(st.clientWidth-75)/paper.w,(st.clientHeight-155)/paper.h)); }
 function setPaper(w,h){ paper={w:Math.max(400,Math.min(6000,Number(w)||1400)), h:Math.max(400,Math.min(6000,Number(h)||1000))}; syncPaper(); render(); toast('도화지 크기를 변경했습니다'); }
-function loadPreset(k){ if((data.rooms.length||data.fixtures.length) && !confirm('샘플을 불러오면 현재 도면이 교체됩니다. 기존 작업을 프로젝트 파일로 저장하셨나요?')) return; snap(); data=migrate(JSON.parse(JSON.stringify(presets[k]))); clearSelection(); uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(x=>x.id)); paper={w:1400,h:1000}; syncPaper(); render(); toast(k==='two'?'2층 구조 초안을 불러왔습니다':'3층 구조 초안을 불러왔습니다'); }
+function loadPreset(k){appendDrawing(k==='two'?'2층 샘플 '+(drawings.length+1):'3층 샘플 '+(drawings.length+1),presets[k]);}
 function init(){
   document.getElementById('paperSize').onchange=e=>{ if(e.target.value==='custom'){ document.getElementById('customSize').style.display='inline-flex'; return; } const [w,h]=e.target.value.split(',').map(Number); setPaper(w,h); };
   document.getElementById('applySize').onclick=()=>setPaper(document.getElementById('paperW').value, document.getElementById('paperH').value);
   document.getElementById('zoomin').onclick=()=>setZoom(zoom+.1); document.getElementById('zoomout').onclick=()=>setZoom(zoom-.1); document.getElementById('fit').onclick=fitPaper;
   document.getElementById('new2').onclick=()=>loadPreset('two'); document.getElementById('new3').onclick=()=>loadPreset('three');
-  let stored=null; try{ stored=JSON.parse(localStorage.getItem(AUTO_KEY)||localStorage.getItem('daom-plan-autosave-v2')||'null'); }catch(e){}
-  if(stored && stored.data?.rooms?.length){ data=migrate(stored.data); paper=stored.paper||paper; data.items.forEach(it=>{ if(it.type==='door'&&!it.hinge) it.hinge='left'; }); uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(o=>o.id)); toast('이전 자동 저장 작업을 복구했습니다'); }
-  else { data=JSON.parse(JSON.stringify(presets.two)); uid=17; }
+  initDrawingControls();
+  let ws=null;try{ws=JSON.parse(localStorage.getItem(AUTO_KEY)||'null')}catch(e){}
+  if(ws&&Array.isArray(ws.drawings)&&ws.drawings.length){
+    drawings=ws.drawings.map(d=>({id:String(d.id),name:String(d.name||'도면'),data:migrate(d.data||emptyData()),paper:d.paper||{w:1400,h:1000}}));
+    activeDrawingId=ws.activeDrawingId;
+    drawingSeq=Math.max(Number(ws.drawingSeq)||1,drawings.length+1);
+    const chosen=drawings.find(d=>d.id===activeDrawingId)||drawings[0];
+    activeDrawingId=chosen.id;data=migrate(JSON.parse(JSON.stringify(chosen.data)));paper={...chosen.paper};
+    uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(o=>o.id));
+    toast('저장된 도면 목록을 복구했습니다');
+  }else{
+    let legacy=null;
+    try{legacy=JSON.parse(localStorage.getItem(LEGACY_KEY)||localStorage.getItem('daom-plan-autosave-v2')||'null')}catch(e){}
+    const d=newDrawing('2층 작업 도면',legacy?.data?.rooms?.length?legacy.data:presets.two,legacy?.paper||{w:1400,h:1000});
+    drawings=[d];activeDrawingId=d.id;data=JSON.parse(JSON.stringify(d.data));paper={...d.paper};
+    uid=Math.max(0,...[...data.rooms,...data.items,...data.fixtures].map(o=>o.id));
+    if(legacy?.data?.rooms?.length)toast('기존 작업을 새 도면 목록으로 가져왔습니다');
+  }
+  syncDrawingSelect();saveWorkspaceNow();
   syncPaper(); setTimeout(fitPaper,0);
 }
 init(); render();
