@@ -57,6 +57,7 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
     <button class="tool" data-tool="kitchenL"><span class="ico">ㄱ</span><span>ㄱ자 주방</span></button>
     <button class="tool" data-tool="stairs"><span class="ico">▥</span><span>계단</span></button>
     <button class="tool" data-tool="washer"><span class="ico">◉</span><span>세탁기</span></button>
+    <button class="tool" data-tool="closet"><span class="ico">▥</span><span>붙박이장</span></button>
     <button class="tool" data-tool="toilet"><span class="ico">◔</span><span>변기</span></button>
     <button class="tool" data-tool="sink"><span class="ico">◻</span><span>세면대</span></button>
     <button class="tool" data-tool="shower"><span class="ico">╱</span><span>샤워부스</span></button>
@@ -323,6 +324,11 @@ function render(skipProps=false){
     } else if(f.type==='stairs'){
       for(let a=-h/2+12;a<h/2;a+=14) node('path',{d:`M ${-w/2+4} ${a} H ${w/2-4}`,stroke:'#b1bab9','stroke-width':1},g);
       node('path',{d:`M 0 ${h/2-8} V ${-h/2+8} l -5 8 m 5 -8 l 5 8`,stroke:'#687c7b','stroke-width':1.6,fill:'none'},g);
+    } else if(f.type==='closet'){
+      // Sliding-door built-in closet with transparent background.
+      node('rect',{x:-w/2+2,y:-h/2+2,width:w-4,height:h-4,rx:2,fill:'none',stroke:'#94a9a7','stroke-width':1.5},g);
+      node('path',{d:`M 0 ${-h/2+3} V ${h/2-3} M ${-w/2+4} ${-h/2+6} H ${w/2-4} M ${-w/2+4} ${h/2-6} H ${w/2-4}`,stroke:'#b2c2c0','stroke-width':1.1,fill:'none'},g);
+      node('path',{d:`M ${-w*.08} ${-Math.min(h*.2,9)} V ${Math.min(h*.2,9)} M ${w*.08} ${-Math.min(h*.2,9)} V ${Math.min(h*.2,9)}`,stroke:'#8aa4a2','stroke-width':2,'stroke-linecap':'round'},g);
     } else if(f.type==='kitchen'){
       node('rect',{x:-w/2+8,y:-h/2+7,width:w*.35,height:h-14,rx:5,fill:'none',stroke:'#a4b5b3'},g);
       const c1=Math.min(w/2-25,0), c2=Math.min(w/2-7,26);
@@ -373,7 +379,7 @@ function renderProps(){
     props.innerHTML=`<div class="selecthint">도면에서 요소를 선택하거나<br>왼쪽에서 새 요소를 추가해 주세요.</div><div class="divider"></div><div class="mini">현재 공간 ${data.rooms.length}개 · 문/창문 ${data.items.length}개 · 설비 ${data.fixtures.length}개</div>`;
     return;
   }
-  const titleMap={door:'문',window:'창문',stairs:'계단',kitchen:'일자 주방',kitchenL:'ㄱ자 주방',toilet:'변기',sink:'세면대',shower:'샤워부스',washer:'세탁기',text:'텍스트',polyroom:'다각형 공간'};
+  const titleMap={door:'문',window:'창문',stairs:'계단',kitchen:'일자 주방',kitchenL:'ㄱ자 주방',toilet:'변기',sink:'세면대',shower:'샤워부스',washer:'세탁기',closet:'붙박이장',text:'텍스트',polyroom:'다각형 공간'};
   let h=`<div class="prop-title">${o.type==='room'?'방 설정':(titleMap[o.type]||'요소')+' 편집'}</div><div class="tiny">수정 후 다른 곳을 클릭하면 자동 반영됩니다.<br>방향키: 1cm씩 · Shift+방향키: 10cm씩</div>`;
   if(o.type==='room'){
     h+=field('공간 이름','name',o.name,'text');
@@ -383,7 +389,7 @@ function renderProps(){
     h+=`<div class="fieldrow">${field('가로 (cm)','w',o.w)}${field('세로 (cm)','h',o.h)}</div>`;
     h+=`<div class="fieldrow">${field('왼쪽 위치','x',o.x)}${field('위쪽 위치','y',o.y)}</div>`;
     h+=`<div class="mini">면적: ${roomArea(o).toFixed(2)} ㎡</div>`;
-    h+=selectField('바닥 배경색','fill',o.fill,[['#f8f9f7','화이트 그레이'],['#ffffff','순백색'],['#f0f5f2','소프트 세이지'],['#f8f4ed','웜 아이보리']]);
+    h+=selectField('바닥 배경색','fill',o.fill,[['#f8f9f7','화이트 그레이'],['#ffffff','순백색'],['#f0f5f2','소프트 세이지'],['#f8f4ed','웜 아이보리'],['#f3efe7','샌드 베이지'],['#eef3f8','페일 블루'],['#f4eef7','페일 라벤더'],['#f7f1e8','크림 베이지'],['#edf4ef','민트 크림'],['#efece6','웜 그레이지'],['#f2ece8','로지 베이지'],['#f2f3ec','라이트 올리브']]);
     h+=`<div class="actionrow"><button class="btn" id="adddoor">+ 문</button><button class="btn" id="addwindow">+ 창문</button></div>`;
   } else if(o.type==='polyroom'){
     h+=field('공간 이름','name',o.name,'text');
@@ -392,7 +398,7 @@ function renderProps(){
     h+=`<div class="tiny">청록색 꼭짓점을 마우스로 끌어서 모양을 수정하세요. 좌표를 직접 입력해도 됩니다.</div>`;
     h+=`<div class="fieldrow">${field('기준점 X','x',o.x)}${field('기준점 Y','y',o.y)}</div>`;
     h+=`<div class="mini">면적: ${roomArea(o).toFixed(2)} ㎡</div>`;
-    h+=selectField('바닥 배경색','fill',o.fill,[['#ffffff','순백색'],['#f8f9f7','화이트 그레이'],['#f0f5f2','소프트 세이지'],['#f8f4ed','웜 아이보리']]);
+    h+=selectField('바닥 배경색','fill',o.fill,[['#f8f9f7','화이트 그레이'],['#ffffff','순백색'],['#f0f5f2','소프트 세이지'],['#f8f4ed','웜 아이보리'],['#f3efe7','샌드 베이지'],['#eef3f8','페일 블루'],['#f4eef7','페일 라벤더'],['#f7f1e8','크림 베이지'],['#edf4ef','민트 크림'],['#efece6','웜 그레이지'],['#f2ece8','로지 베이지'],['#f2f3ec','라이트 올리브']]);
     h+=textareaField('꼭짓점 좌표 (x, y 한 줄씩)','pointsText', stringifyPoints(o));
     h+=`<div class="tiny">예시: 0,0 ↵ 320,0 ↵ 340,120 ...<br>좌표는 기준점(X,Y)으로부터의 상대 위치입니다.</div>`;
     h+=`<div class="actionrow"><button class="btn" id="adddoor">+ 문</button><button class="btn" id="addwindow">+ 창문</button></div>`;
@@ -482,7 +488,7 @@ function addShape(type){
   } else {
     const defs={
       kitchen:{name:'주방',w:145,h:55}, kitchenL:{name:'ㄱ자 주방',w:180,h:90}, stairs:{name:'계단',w:100,h:140},
-      toilet:{name:'변기',w:50,h:62}, sink:{name:'세면대',w:54,h:34}, shower:{name:'샤워',w:46,h:46}, washer:{name:'세탁기',w:65,h:65}, text:{name:'텍스트',w:90,h:35}
+      toilet:{name:'변기',w:50,h:62}, sink:{name:'세면대',w:54,h:34}, shower:{name:'샤워',w:46,h:46}, washer:{name:'세탁기',w:65,h:65}, closet:{name:'붙박이장',w:120,h:45}, text:{name:'텍스트',w:90,h:35}
     };
     const d=defs[type];
     const f={id:++uid,type,name:d.name,x:420,y:300,w:d.w,h:d.h,rotate:0};
@@ -492,7 +498,7 @@ function addShape(type){
 }
 
 function setTool(t){ tool=t; document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active',el.dataset.tool===t)); }
-document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(['room','polyroom'].includes(getSel()?.type)) addItem(t); else toast('도면에서 방 또는 다각형 공간을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','washer','text'].includes(t)){ addShape(t); } else setTool(t); });
+document.querySelectorAll('.tool').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.tool; if(t==='door' || t==='window'){ if(['room','polyroom'].includes(getSel()?.type)) addItem(t); else toast('도면에서 방 또는 다각형 공간을 먼저 클릭해 주세요'); } else if(t==='select'){ setTool('select'); } else if(['room','polyroom','kitchen','kitchenL','stairs','toilet','sink','shower','washer','closet','text'].includes(t)){ addShape(t); } else setTool(t); });
 
 function svgPoint(ev){ const pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
 svg.addEventListener('pointerdown',ev=>{
