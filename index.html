@@ -99,7 +99,9 @@ body{margin:0;color:var(--ink);background:var(--bg);font-family:system-ui,-apple
       <label>화면 <span id="zoomLabel">70%</span></label>
       <button class="btn" id="zoomout">－</button>
       <button class="btn" id="zoomin">＋</button>
-      <button class="btn" id="fit">맞춤</button>
+      <button class="btn" id="fit" title="도화지를 화면에 맞춤">맞춤</button>
+      <button class="btn" id="selectAll" title="모든 방과 설비를 선택 (Ctrl+A)">전체 선택</button>
+      <button class="btn" id="centerPlan" title="방·문·창문·설비의 배치를 유지하며 도화지 중앙으로 이동">도면 가운데 정렬</button>
     </div>
     <div class="artboard" id="artboard" style="width:1120px;height:800px">
       <svg id="plan" viewBox="0 0 900 680" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -233,6 +235,36 @@ function selectOne(id){selected=id;selectedIds=new Set([id]);}
 function groupMembers(obj){return obj?.groupId ? allObjects().filter(x=>x.groupId===obj.groupId).map(x=>x.id) : [obj.id];}
 function pickSelection(id,add){const obj=allObjects().find(o=>o.id===id);if(!obj)return;if(!add){selectedIds=new Set(groupMembers(obj));selected=id;}else{const ids=groupMembers(obj),already=ids.every(x=>selectedIds.has(x));ids.forEach(x=>already?selectedIds.delete(x):selectedIds.add(x));selected=selectedIds.has(id)?id:(selectedIds.values().next().value??null);}}
 function moveSelected(dx,dy){for(const obj of allObjects()){if(selectedIds.has(obj.id)&&Number.isFinite(obj.x)&&Number.isFinite(obj.y)){obj.x+=dx;obj.y+=dy;}}}
+function selectAllPlan(){
+  const objects=[...data.rooms,...data.fixtures];
+  selectedIds=new Set(objects.map(o=>o.id));
+  selected=objects.length?objects[0].id:null;
+  render();toast(objects.length+'개 공간·설비를 선택했습니다');
+}
+function centerEntirePlan(){
+  const boxes=[];
+  for(const r of data.rooms){
+    if(r.type==='polyroom' && r.points?.length){const b=polyBounds(r);boxes.push({minX:b.x-WALL,maxX:b.x+b.w+WALL,minY:b.y-WALL,maxY:b.y+b.h+WALL});}
+    else if(Number.isFinite(r.x)&&Number.isFinite(r.y)&&Number.isFinite(r.w)&&Number.isFinite(r.h)){
+      boxes.push({minX:r.x-WALL,maxX:r.x+r.w+WALL,minY:r.y-WALL,maxY:r.y+r.h+WALL});
+    }
+  }
+  for(const f of data.fixtures){
+    if(!Number.isFinite(f.x)||!Number.isFinite(f.y))continue;
+    const w=f.w||60,h=f.h||40,rad=(f.rotate||0)*Math.PI/180;
+    const halfW=(Math.abs(w*Math.cos(rad))+Math.abs(h*Math.sin(rad)))/2;
+    const halfH=(Math.abs(w*Math.sin(rad))+Math.abs(h*Math.cos(rad)))/2;
+    boxes.push({minX:f.x-halfW,maxX:f.x+halfW,minY:f.y-halfH,maxY:f.y+halfH});
+  }
+  if(!boxes.length){toast('가운데 정렬할 공간이나 설비가 없습니다');return;}
+  const minX=Math.min(...boxes.map(b=>b.minX)),maxX=Math.max(...boxes.map(b=>b.maxX));
+  const minY=Math.min(...boxes.map(b=>b.minY)),maxY=Math.max(...boxes.map(b=>b.maxY));
+  const dx=Math.round((paper.w-minX-maxX)/2),dy=Math.round((paper.h-minY-maxY)/2);
+  snap();
+  for(const o of [...data.rooms,...data.fixtures]){if(Number.isFinite(o.x)&&Number.isFinite(o.y)){o.x+=dx;o.y+=dy;}}
+  // Door and window objects are attached to walls by room ID, so they follow automatically.
+  clearSelection();render();toast('현재 도면을 가운데로 정렬했습니다');
+}
 function assignGroup(){if(selectedIds.size<2)return; snap();let id='g'+Date.now().toString(36);allObjects().forEach(o=>{if(selectedIds.has(o.id))o.groupId=id});render();toast('선택한 요소를 그룹으로 묶었습니다');}
 function ungroup(){if(!selectedIds.size)return;snap();const groupIds=new Set(allObjects().filter(o=>selectedIds.has(o.id)&&o.groupId).map(o=>o.groupId));allObjects().forEach(o=>{if(groupIds.has(o.groupId))delete o.groupId});render();toast('그룹을 해제했습니다');}
 function getRoom(id){ return data.rooms.find(o=>o.id===id); }
@@ -574,6 +606,8 @@ function init(){
   document.getElementById('paperSize').onchange=e=>{ if(e.target.value==='custom'){ document.getElementById('customSize').style.display='inline-flex'; return; } const [w,h]=e.target.value.split(',').map(Number); setPaper(w,h); };
   document.getElementById('applySize').onclick=()=>setPaper(document.getElementById('paperW').value, document.getElementById('paperH').value);
   document.getElementById('zoomin').onclick=()=>setZoom(zoom+.1); document.getElementById('zoomout').onclick=()=>setZoom(zoom-.1); document.getElementById('fit').onclick=fitPaper;
+  document.getElementById('selectAll').onclick=selectAllPlan;
+  document.getElementById('centerPlan').onclick=centerEntirePlan;
   document.getElementById('samplePicker').onchange=e=>{const kind=e.target.value;e.target.value='';if(kind)loadPreset(kind);};
   initDrawingControls();
   let ws=null;try{ws=JSON.parse(localStorage.getItem(AUTO_KEY)||'null')}catch(e){}
