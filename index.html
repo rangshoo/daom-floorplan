@@ -562,7 +562,7 @@ svg.addEventListener('pointermove',ev=>{
 });
 svg.addEventListener('pointerup',()=>{if(drag){drag=null;render();}}); svg.addEventListener('pointercancel',()=>{if(drag){drag=null;render();}});
 
-document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable||e.altKey||e.ctrlKey||e.metaKey)return;const step=e.shiftKey?10:1;const d={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];if(!d||!selectedIds.size)return;e.preventDefault();if(!allObjects().some(o=>selectedIds.has(o.id)&&typeof o.x==='number'))return;snap();moveSelected(...d);render();});
+document.addEventListener('keydown',e=>{const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable||e.altKey)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();selectAllPlan();return;}if(e.ctrlKey||e.metaKey)return;const step=e.shiftKey?10:1;const d={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];if(!d||!selectedIds.size)return;e.preventDefault();if(!allObjects().some(o=>selectedIds.has(o.id)&&typeof o.x==='number'))return;snap();moveSelected(...d);render();});
 document.getElementById('undo').onclick=()=>{ if(!history.length) return; data=history.pop(); clearSelection(); render(); };
 document.getElementById('save').onclick=()=>{
   stashDrawing();
